@@ -16,12 +16,12 @@ func TestDecoder(t *testing.T) {
 		{
 			name:     "simple string",
 			input:    "4:spam",
-			expected: "spam",
+			expected: []byte("spam"),
 		},
 		{
 			name:     "empty string",
 			input:    "0:",
-			expected: "",
+			expected: []byte(""),
 		},
 		{
 			name:     "integer",
@@ -36,19 +36,19 @@ func TestDecoder(t *testing.T) {
 		{
 			name:     "list",
 			input:    "l4:spam4:eggse",
-			expected: []any{"spam", "eggs"},
+			expected: []any{[]byte("spam"), []byte("eggs")},
 		},
 		{
 			name:     "nested list",
 			input:    "l4:spamli42e3:eggee",
-			expected: []any{"spam", []any{42, "egg"}},
+			expected: []any{[]byte("spam"), []any{42, []byte("egg")}},
 		},
 		{
 			name:  "dictionary",
 			input: "d3:baz3:qux3:foo3:bare",
 			expected: map[string]any{
-				"foo": "bar",
-				"baz": "qux",
+				"foo": []byte("bar"),
+				"baz": []byte("qux"),
 			},
 		},
 		{
@@ -57,7 +57,7 @@ func TestDecoder(t *testing.T) {
 			expected: map[string]any{
 				"foo": 42,
 				"bar": map[string]any{
-					"qux": "qux",
+					"qux": []byte("qux"),
 				},
 			},
 		},
@@ -95,12 +95,12 @@ func TestDecoderErr(t *testing.T) {
 		{
 			name:        "missing list terminator",
 			input:       "l4:spamli42e3:egg",
-			expectedErr: ErrNullRootValue,
+			expectedErr: ErrUnexpectedEOF,
 		},
 		{
 			name:        "missing dict terminator",
 			input:       "d3:bar3:baz",
-			expectedErr: ErrNullRootValue,
+			expectedErr: ErrUnexpectedEOF,
 		},
 		{
 			name:        "invalid integer format",
@@ -140,7 +140,7 @@ func TestDecoderErr(t *testing.T) {
 		{
 			name:        "missing dictionary value",
 			input:       "d3:bare",
-			expectedErr: ErrMissingDictionaryValue,
+			expectedErr: ErrInvalidType,
 		},
 		{
 			name:        "dictionary keys not sorted",
@@ -156,5 +156,32 @@ func TestDecoderErr(t *testing.T) {
 				t.Errorf("Expected error %v, got %v", tc.expectedErr, err)
 			}
 		})
+	}
+}
+
+var (
+	unmarshalTestData  = []byte("d8:announce38:udp://tracker.publicbt.com:80/announce13:announce-listll38:udp://tracker.publicbt.com:80/announceel44:udp://tracker.openbittorrent.com:80/announceee7:comment33:Debian CD from cdimage.debian.org4:infod6:lengthi170917888e4:name30:debian-8.8.0-arm64-netinst.iso12:piece lengthi262144eee")
+	bytesInt64TestData = map[string]any{}{
+		"announce": []byte("udp://tracker.publicbt.com:80/announce"),
+		"announce-list": []any{}{
+			[]any{}{[]byte("udp://tracker.publicbt.com:80/announce")},
+			[]any{}{[]byte("udp://tracker.openbittorrent.com:80/announce")},
+		},
+		"comment": []byte("Debian CD from cdimage.debian.org"),
+		"info": map[string]any{}{
+			"name":         []byte("debian-8.8.0-arm64-netinst.iso"),
+			"length":       int64(170917888),
+			"piece length": int64(262144),
+		},
+	}
+)
+
+func TestUnmarshal(t *testing.T) {
+	torrent, err := Unmarshal(unmarshalTestData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(bytesInt64TestData, torrent) {
+		t.Errorf("Expected %v, got %v", bytesInt64TestData, torrent)
 	}
 }
