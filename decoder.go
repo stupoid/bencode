@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 )
 
@@ -243,64 +242,6 @@ func (d *Decoder) assignDecodedToValue(destVal reflect.Value, srcData any) error
 		destVal.Set(reflect.ValueOf(srcData))
 	}
 	return nil
-}
-
-// cachedStructFieldInfo holds pre-calculated information about a struct field.
-type cachedStructFieldInfo struct {
-	fieldName  string
-	bencodeTag string
-	index      int
-	typ        reflect.Type
-	required   bool
-}
-
-var (
-	// structInfoCache caches metadata for struct types.
-	structInfoCache      = make(map[reflect.Type][]cachedStructFieldInfo)
-	structInfoCacheMutex sync.RWMutex
-)
-
-// getCachedStructInfo retrieves or computes and caches metadata for a struct type.
-func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
-	structInfoCacheMutex.RLock()
-	info, found := structInfoCache[typ]
-	structInfoCacheMutex.RUnlock()
-	if found {
-		return info
-	}
-
-	structInfoCacheMutex.Lock()
-	defer structInfoCacheMutex.Unlock()
-	// Double-check in case another goroutine populated it while waiting for the lock.
-	if info, found = structInfoCache[typ]; found {
-		return info
-	}
-
-	var fields []cachedStructFieldInfo
-	for i := range typ.NumField() {
-		field := typ.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-
-		tagValue := field.Tag.Get("bencode")
-		if tagValue == "" || tagValue == "-" { // Also skip if explicitly ignored
-			continue
-		}
-
-		bencodeName, left, found := strings.Cut(tagValue, ",")
-		isRequired := found && strings.TrimSpace(left) == "required"
-
-		fields = append(fields, cachedStructFieldInfo{
-			fieldName:  field.Name,
-			bencodeTag: bencodeName,
-			index:      i,
-			typ:        field.Type,
-			required:   isRequired, // Store the parsed required status
-		})
-	}
-	structInfoCache[typ] = fields
-	return fields
 }
 
 // populateStruct populates the fields of 'structVal' using data from 'dictData'.

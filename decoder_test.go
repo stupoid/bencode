@@ -7,32 +7,6 @@ import (
 	"testing"
 )
 
-type TorrentInfo struct {
-	Pieces      string `bencode:"pieces"`
-	PieceLength int64  `bencode:"piece length"`
-	Length      int64  `bencode:"length"`
-	Name        string `bencode:"name"`
-}
-
-type Torrent struct {
-	Announce string      `bencode:"announce"`
-	Comment  string      `bencode:"comment"`
-	Info     TorrentInfo `bencode:"info"`
-}
-
-var (
-	unmarshalTestData = []byte("d8:announce38:udp://tracker.publicbt.com:80/announce13:announce-listll38:udp://tracker.publicbt.com:80/announceel44:udp://tracker.openbittorrent.com:80/announceee7:comment33:Debian CD from cdimage.debian.org4:infod6:lengthi170917888e4:name30:debian-8.8.0-arm64-netinst.iso12:piece lengthi262144eee")
-	torrentTestData   = Torrent{
-		Announce: "udp://tracker.publicbt.com:80/announce",
-		Comment:  "Debian CD from cdimage.debian.org",
-		Info: TorrentInfo{
-			Name:        "debian-8.8.0-arm64-netinst.iso",
-			Length:      170917888,
-			PieceLength: 262144,
-		},
-	}
-)
-
 func TestDecoder(t *testing.T) {
 	testcases := []struct {
 		name     string
