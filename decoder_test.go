@@ -394,6 +394,31 @@ func TestDecodeTypeStruct(t *testing.T) {
 	}
 }
 
+func TestDencodeStructNoBencodeNameTag(t *testing.T) {
+	type TestStruct struct {
+		Name  string `bencode:"name"`
+		Value int64  // No bencode tag, should use field name
+	}
+
+	var got TestStruct
+
+	bencodeString := "d5:Valuei123e4:name4:teste"
+	expected := TestStruct{
+		Name:  "test",
+		Value: int64(123),
+	}
+
+	decoder := NewDecoder(strings.NewReader(bencodeString))
+	err := decoder.Decode(&got)
+	if err != nil {
+		t.Fatalf("DecodeType failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("Expected %v, got %v", expected, got)
+	}
+}
+
 func TestDecodeTypeString(t *testing.T) {
 	var got string
 

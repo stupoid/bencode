@@ -7,7 +7,7 @@ import (
 )
 
 type Info struct {
-	Pieces      string `bencode:"pieces"`
+	Pieces      string `bencode:"pieces,omitempty"`
 	PieceLength int64  `bencode:"piece length"`
 	Length      int64  `bencode:"length"`
 	Name        string `bencode:"name"`

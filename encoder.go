@@ -136,7 +136,9 @@ func (e *Encoder) Encode(v any) error {
 					if fieldInfo.required {
 						return &Error{Type: ErrEncodeRequiredFieldZero, Msg: fmt.Sprintf("required field %q (tag %q) is zero and cannot be omitted", fieldInfo.fieldName, fieldInfo.bencodeTag), FieldName: fieldInfo.bencodeTag}
 					}
-					continue // Skip zero-value fields unless they are required
+					if fieldInfo.omitEmpty {
+						continue // Skip zero-value fields if omitEmpty is set
+					}
 				}
 				// Encode key (bencodeTag)
 				if _, err := fmt.Fprintf(e.w, "%d:%s", len([]byte(fieldInfo.bencodeTag)), fieldInfo.bencodeTag); err != nil {

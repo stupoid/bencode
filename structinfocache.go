@@ -7,6 +7,35 @@ import (
 	"sync"
 )
 
+const (
+	bencodeTagName      = "bencode"
+	bencodeTagRequired  = "required"
+	bencodeTagSeparator = ","
+	bencodeTagIgnore    = "-"
+	bencodeTagOmitEmpty = "omitempty"
+)
+
+func parseTagValue(tagValue string) (name string, required bool, omitEmpty bool) {
+	if tagValue == "" || tagValue == bencodeTagIgnore {
+		return "", false, false
+	}
+	nameVal, left, hasParts := strings.Cut(tagValue, bencodeTagSeparator)
+	name = strings.TrimSpace(nameVal)
+	if hasParts {
+		parts := strings.Split(left, bencodeTagSeparator)
+		for _, part := range parts {
+			switch strings.TrimSpace(part) {
+			case bencodeTagRequired:
+				required = true
+			case bencodeTagOmitEmpty:
+				omitEmpty = true
+			}
+		}
+	}
+
+	return name, required, omitEmpty
+}
+
 var (
 	// structInfoCache caches metadata for struct types.
 	structInfoCache      = make(map[reflect.Type][]cachedStructFieldInfo)
@@ -20,6 +49,7 @@ type cachedStructFieldInfo struct {
 	index      int
 	typ        reflect.Type
 	required   bool
+	omitEmpty  bool
 }
 
 // getCachedStructInfo retrieves or computes and caches metadata for a struct type.
@@ -46,19 +76,20 @@ func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
 		}
 
 		tagValue := field.Tag.Get("bencode")
-		if tagValue == "" || tagValue == "-" { // Also skip if explicitly ignored
-			continue
-		}
+		bencodeName, required, omitEmpty := parseTagValue(tagValue)
 
-		bencodeName, left, found := strings.Cut(tagValue, ",")
-		isRequired := found && strings.TrimSpace(left) == "required"
+		if bencodeName == "" {
+			// If no tag is specified, use the field name as the bencode tag.
+			bencodeName = field.Name
+		}
 
 		fields = append(fields, cachedStructFieldInfo{
 			fieldName:  field.Name,
 			bencodeTag: bencodeName,
 			index:      i,
 			typ:        field.Type,
-			required:   isRequired,
+			required:   required,
+			omitEmpty:  omitEmpty,
 		})
 	}
 

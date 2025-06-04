@@ -6,17 +6,17 @@ Bencode (pronounced B-encode) is a data serialization format used primarily by t
 
 ## Features
 
-*   **Simple API:** Marshal and Unmarshal functions similar to `encoding/json`.
-*   **Streaming Support:** `Encoder` and `Decoder` types for working with `io.Reader` and `io.Writer`.
-*   **Struct Tagging:** Customize struct field encoding with `bencode` tags (e.g., `bencode:"custom_name,required"`).
-*   **Comprehensive Type Support:**
-    *   Integers (int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64)
-    *   Strings and `[]byte`
-    *   Slices (encoded as Bencode lists)
-    *   Maps with string keys (encoded as Bencode dictionaries, keys are automatically sorted)
-    *   Structs (encoded as Bencode dictionaries)
-*   **Detailed Error Handling:** Custom error types for precise error identification.
-*   **Zero-Value Field Omission:** Struct fields with zero values are omitted by default during encoding, unless marked as `required`.
+- **Simple API:** Marshal and Unmarshal functions similar to `encoding/json`.
+- **Streaming Support:** `Encoder` and `Decoder` types for working with `io.Reader` and `io.Writer`.
+- **Struct Tagging:** Customize struct field encoding with `bencode` tags (e.g., `bencode:"custom_name,required"`).
+- **Comprehensive Type Support:**
+  - Integers (int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64)
+  - Strings and `[]byte`
+  - Slices (encoded as Bencode lists)
+  - Maps with string keys (encoded as Bencode dictionaries, keys are automatically sorted)
+  - Structs (encoded as Bencode dictionaries)
+- **Detailed Error Handling:** Custom error types for precise error identification.
+- **Zero-Value Field Omission:** Struct fields with zero values are omitted by default during encoding, unless marked as `required`.
 
 ## Installation
 
@@ -259,26 +259,52 @@ func main() {
 ```
 
 The `bencode.Error` struct has the following fields:
-*   `Type`: An `ErrorType` (string) categorizing the error (e.g., `bencode.ErrSyntax`, `bencode.ErrUnmarshalType`).
-*   `Msg`: A human-readable description of the error.
-*   `FieldName`: The name of the struct field or map key related to the error, if applicable.
-*   `WrappedErr`: The underlying error, if any, allowing for error chaining.
+
+- `Type`: An `ErrorType` (string) categorizing the error (e.g., `bencode.ErrSyntax`, `bencode.ErrUnmarshalType`).
+- `Msg`: A human-readable description of the error.
+- `FieldName`: The name of the struct field or map key related to the error, if applicable.
+- `WrappedErr`: The underlying error, if any, allowing for error chaining.
 
 You can check the specific `ErrorType` constants defined in `error.go`, `encoder.go`, and `decoder.go` for more granular error handling.
 
 ## Struct Tags
 
-When encoding or decoding structs, you can use field tags to control the process:
+When encoding or decoding structs, you can control how fields are processed using the `bencode` struct tag:
 
-*   **Key Name:** The first part of the tag specifies the Bencode dictionary key.
-    `FieldName string \`bencode:"my_field_name"\``
-*   **Required Fields:** Add `,required` to mark a field as mandatory.
-    *   During encoding, if a `required` field has its Go zero value, `Marshal` will return an `ErrEncodeRequiredFieldZero` error.
-    *   During unmarshaling, if a `required` field is not present in the Bencode data, `Unmarshal` will return an `ErrUnmarshalRequiredFieldMissing` error.
-    `FieldName string \`bencode:"name,required"\``
-*   **Omit Empty (Default Behavior for non-required fields):** By default, fields that are not marked `required` and have their Go zero value will be omitted during encoding. You can explicitly use `,omitempty` for clarity, though it's the default for non-required fields.
-    `OptionalField string \`bencode:"optional_field"` (implicitly omitempty if zero)
-    `OptionalField string \`bencode:"optional_field,omitempty"\`` (explicitly omitempty if zero)
+### Basic Tag Format
+
+```go
+type Example struct {
+    // Format: `bencode:"key_name[,option1][,option2]"`
+    Field string `bencode:"custom_key_name"`
+}
+```
+
+### Available Tag Options
+
+1. **Key Name** - The first part of the tag specifies the key name in the Bencode dictionary:
+
+   ```go
+   Name string `bencode:"name"` // Will be encoded with key "name"
+   ```
+
+2. **Required Fields** - Add the `required` option to mark a field as mandatory:
+
+   ```go
+   Name string `bencode:"name,required"`
+   ```
+
+   - During encoding: Returns an error if a required field has its zero value
+   - During decoding: Returns an error if a required field is missing in the Bencode data
+
+3. **Omit Empty** - Add the `omitempty` option to skip encoding fields with zero values:
+   ```go
+   Description string `bencode:"description,omitempty"`
+   ```
+
+### Tag Behavior Notes
+
+- If no `bencode` tag is provided, the field's name is used as the key
 
 If no `bencode` tag is present for a struct field, the field name itself is used as the Bencode key. Only exported struct fields are considered.
 

@@ -111,6 +111,41 @@ func TestEncodeStruct(t *testing.T) {
 	}
 }
 
+func TestEncodeStructNoBencodeNameTag(t *testing.T) {
+	type TestStruct struct {
+		Name  string `bencode:"name"`
+		Value int    // No bencode tag, should use field name
+	}
+
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{
+			name:     "struct with bencode tag and no tag",
+			value:    TestStruct{Name: "test", Value: 123},
+			expected: "d5:Valuei123e4:name4:teste", // Note: 'Value' is used as the key for the int field
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b bytes.Buffer
+			enc := NewEncoder(&b)
+			err := enc.Encode(tt.value)
+			if err != nil {
+				t.Errorf("Encode() error = %v", err)
+				return
+			}
+
+			if got := b.String(); got != tt.expected {
+				t.Errorf("Encode() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // failingWriter is an io.Writer that always returns an error.
 type failingWriter struct {
 	err error
@@ -249,5 +284,24 @@ func TestMarshal(t *testing.T) {
 
 	if !bytes.Equal(got, unmarshalTestData) {
 		t.Errorf("Marshal() = %s, want %s", got, unmarshalTestData)
+	}
+}
+
+func TestEncodeNonRequiredZeroValue(t *testing.T) {
+	type NonRequiredStruct struct {
+		Value int `bencode:"value"`
+	}
+
+	nonRequired := NonRequiredStruct{Value: 0} // Zero value for int, should not error
+	expected := []byte("d5:valuei0ee")         // Expected bencode output for zero value int
+	var b bytes.Buffer
+	enc := NewEncoder(&b)
+
+	err := enc.Encode(nonRequired)
+	if err != nil {
+		t.Errorf("Encode() error = %v, want nil", err)
+	}
+	if !bytes.Equal(b.Bytes(), expected) {
+		t.Errorf("Encode() = %s, want %s", b.Bytes(), expected)
 	}
 }
