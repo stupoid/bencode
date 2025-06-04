@@ -21,21 +21,8 @@ type Torrent struct {
 }
 
 var (
-	unmarshalTestData  = []byte("d8:announce38:udp://tracker.publicbt.com:80/announce13:announce-listll38:udp://tracker.publicbt.com:80/announceel44:udp://tracker.openbittorrent.com:80/announceee7:comment33:Debian CD from cdimage.debian.org4:infod6:lengthi170917888e4:name30:debian-8.8.0-arm64-netinst.iso12:piece lengthi262144eee")
-	bytesInt64TestData = map[string]any{
-		"announce": []byte("udp://tracker.publicbt.com:80/announce"),
-		"announce-list": []any{
-			[]any{[]byte("udp://tracker.publicbt.com:80/announce")},
-			[]any{[]byte("udp://tracker.openbittorrent.com:80/announce")},
-		},
-		"comment": []byte("Debian CD from cdimage.debian.org"),
-		"info": map[string]any{
-			"name":         []byte("debian-8.8.0-arm64-netinst.iso"),
-			"length":       int64(170917888),
-			"piece length": int64(262144),
-		},
-	}
-	torrentTestData = Torrent{
+	unmarshalTestData = []byte("d8:announce38:udp://tracker.publicbt.com:80/announce13:announce-listll38:udp://tracker.publicbt.com:80/announceel44:udp://tracker.openbittorrent.com:80/announceee7:comment33:Debian CD from cdimage.debian.org4:infod6:lengthi170917888e4:name30:debian-8.8.0-arm64-netinst.iso12:piece lengthi262144eee")
+	torrentTestData   = Torrent{
 		Announce: "udp://tracker.publicbt.com:80/announce",
 		Comment:  "Debian CD from cdimage.debian.org",
 		Info: TorrentInfo{
@@ -117,82 +104,161 @@ func TestDecoder(t *testing.T) {
 
 func TestDecoderErr(t *testing.T) {
 	testcases := []struct {
-		name        string
-		input       string
-		expectedErr error
+		name            string
+		input           string
+		expectedErrType ErrorType // Use ErrorType for general categorization
+		expectedErr     error     // Use for specific sentinel errors like ErrNullRootValue
+		expectedMsg     string    // Optional: for checking specific error messages
+		expectedField   string    // Optional: for checking FieldName
 	}{
 		{
 			name:        "null root value",
 			input:       "",
-			expectedErr: ErrNullRootValue,
+			expectedErr: ErrNullRootValue, // This is a sentinel *Error
 		},
 		{
-			name:        "invalid type",
-			input:       "x",
-			expectedErr: ErrInvalidType,
+			name:            "invalid type - unexpected token",
+			input:           "x",
+			expectedErrType: ErrSyntaxUnexpectedToken,
 		},
 		{
-			name:        "missing list terminator",
-			input:       "l4:spamli42e3:egg",
-			expectedErr: ErrUnexpectedEOF,
+			name:            "missing list terminator",
+			input:           "l4:spamli42e3:egg",
+			expectedErrType: ErrSyntaxEOF,     // EOF because 'e' is missing
+			expectedErr:     ErrUnexpectedEOF, // Underlying sentinel
 		},
 		{
-			name:        "missing dict terminator",
-			input:       "d3:bar3:baz",
-			expectedErr: ErrUnexpectedEOF,
+			name:            "missing dict terminator",
+			input:           "d3:bar3:baz",
+			expectedErrType: ErrSyntaxEOF,     // EOF because 'e' is missing
+			expectedErr:     ErrUnexpectedEOF, // Underlying sentinel
 		},
 		{
-			name:        "invalid integer format",
-			input:       "ide",
-			expectedErr: ErrInvalidInteger,
+			name:            "invalid integer format - empty",
+			input:           "ie",
+			expectedErrType: ErrSyntaxInteger,
+			expectedMsg:     "empty integer",
 		},
 		{
-			name:        "integer leading zero",
-			input:       "i01e",
-			expectedErr: ErrInvalidInteger,
+			name:            "integer leading zero",
+			input:           "i01e",
+			expectedErrType: ErrSyntaxInteger,
+			expectedMsg:     "invalid integer format (leading zero): 01",
 		},
 		{
-			name:        "integer leading negative zero",
-			input:       "i-01e",
-			expectedErr: ErrInvalidInteger,
+			name:            "integer leading negative zero",
+			input:           "i-01e",
+			expectedErrType: ErrSyntaxInteger,
+			expectedMsg:     "invalid integer format (leading zero): -01",
 		},
 		{
-			name:        "integer empty",
-			input:       "ie",
-			expectedErr: ErrInvalidInteger,
+			name:            "integer empty - just 'ie'",
+			input:           "ide",
+			expectedErrType: ErrSyntaxInteger,
+			expectedMsg:     "cannot parse integer \"d\"",
 		},
 		{
-			name:        "string with negative length",
-			input:       "-4:spam",
-			expectedErr: ErrInvalidType,
+			name:            "string with negative length",
+			input:           "-4:spam", // This will be caught by IsDigit check first
+			expectedErrType: ErrSyntaxUnexpectedToken,
 		},
 		{
-			name:        "dictionary with non-string key",
-			input:       "d3:foo3:bari42e",
-			expectedErr: ErrInvalidDictionaryKey,
+			name:            "string with invalid length (non-numeric)",
+			input:           "a:spam",
+			expectedErrType: ErrSyntaxUnexpectedToken, // Caught by IsDigit
 		},
 		{
-			name:        "duplicate dictionary key",
-			input:       "d3:fooi42e3:fooi43ee",
-			expectedErr: ErrDuplicateDictionaryKey,
+			name:            "string length not terminated",
+			input:           "4spam",
+			expectedErrType: ErrSyntaxEOF,
+			expectedErr:     ErrUnexpectedEOF,
 		},
 		{
-			name:        "missing dictionary value",
-			input:       "d3:bare",
-			expectedErr: ErrInvalidType,
+			name:            "string EOF before full read",
+			input:           "10:spam",
+			expectedErrType: ErrSyntaxEOF,
+			expectedErr:     ErrUnexpectedEOF,
 		},
 		{
-			name:        "dictionary keys not sorted",
-			input:       "d3:foo3:bar3:baz3:quxe",
-			expectedErr: ErrDictionaryKeysNotSorted,
+			name:            "dictionary with non-string key",
+			input:           "di42e3:valee", // Key is an integer
+			expectedErrType: ErrStructureDict,
+			expectedMsg:     "dictionary key type int64 is not a bencode string",
+		},
+		{
+			name:            "duplicate dictionary key",
+			input:           "d3:fooi42e3:fooi43ee",
+			expectedErrType: ErrStructureDictKeyDup,
+			expectedErr:     ErrDuplicateDictionaryKey, // Underlying sentinel
+			expectedField:   "foo",
+		},
+		{
+
+			name:            "missing dictionary value (EOF)",
+			input:           "d3:keye",
+			expectedErrType: ErrSyntaxUnexpectedToken,
+		},
+		{
+			name:            "dictionary keys not sorted",
+			input:           "d3:foo3:bar1:a3:quxe", // "a" should come before "foo"
+			expectedErrType: ErrStructureDictKeySort,
+			expectedErr:     ErrDictionaryKeysNotSorted, // Underlying sentinel
+			expectedField:   "a",
+		},
+		{
+			name:            "integer not terminated",
+			input:           "i123",
+			expectedErrType: ErrSyntaxEOF,
+			expectedErr:     ErrUnexpectedEOF,
 		},
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			decoder := NewDecoder(strings.NewReader(tc.input))
 			_, err := decoder.decode()
-			if !errors.Is(err, tc.expectedErr) {
-				t.Errorf("Expected error %v, got %v", tc.expectedErr, err)
+
+			if err == nil {
+				t.Fatalf("Expected an error, but got nil")
+			}
+
+			// Check if the error is of our custom type *Error
+			bencodeErr, ok := err.(*Error)
+			if !ok {
+				// If it's not a *Error, it might be a wrapped standard error or an unexpected error type.
+				// For sentinel errors defined as *Error, errors.Is should work directly.
+				if tc.expectedErr != nil && errors.Is(err, tc.expectedErr) {
+					return // Correct sentinel error
+				}
+				t.Fatalf("Expected error of type *bencode.Error, got %T: %v", err, err)
+			}
+
+			// If a specific sentinel *Error instance is expected, check with errors.Is
+			if tc.expectedErr != nil {
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("Expected error to be or wrap %q, got %q (type %s, msg %s)", tc.expectedErr, err, bencodeErr.Type, bencodeErr.Msg)
+				}
+				// If errors.Is matches, we can often assume the type is also correct,
+				// but we can add an explicit type check if needed for that sentinel.
+				if bErr, isBencodeError := tc.expectedErr.(*Error); isBencodeError {
+					if bencodeErr.Type != bErr.Type {
+						t.Errorf("For sentinel error %v, expected type %q, got %q", tc.expectedErr, bErr.Type, bencodeErr.Type)
+					}
+				}
+
+			} else if tc.expectedErrType != "" { // Otherwise, check the ErrorType
+				if bencodeErr.Type != tc.expectedErrType {
+					t.Errorf("Expected error type %q, got %q (full error: %v)", tc.expectedErrType, bencodeErr.Type, err)
+				}
+			} else {
+				t.Errorf("Test case %q is missing expectedErr or expectedErrType", tc.name)
+			}
+
+			if tc.expectedMsg != "" && !strings.Contains(bencodeErr.Msg, tc.expectedMsg) {
+				t.Errorf("Expected error message to contain %q, got %q", tc.expectedMsg, bencodeErr.Msg)
+			}
+
+			if tc.expectedField != "" && bencodeErr.FieldName != tc.expectedField {
+				t.Errorf("Expected error field name %q, got %q", tc.expectedField, bencodeErr.FieldName)
 			}
 		})
 	}
