@@ -239,13 +239,13 @@ func TestDecoderErr(t *testing.T) {
 }
 
 func TestUnmarshal(t *testing.T) {
-	var torrent Torrent
-	err := Unmarshal(unmarshalTestData, &torrent)
+	var metainfo Metainfo
+	err := Unmarshal(unmarshalTestData, &metainfo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(torrentTestData, torrent) {
-		t.Errorf("Expected %v, got %v", torrentTestData, torrent)
+	if !reflect.DeepEqual(metainfoTestData, metainfo) {
+		t.Errorf("Expected %v, got %v", metainfoTestData, metainfo)
 	}
 }
 

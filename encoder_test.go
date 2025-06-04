@@ -242,7 +242,7 @@ func TestEncodeErrors(t *testing.T) {
 }
 
 func TestMarshal(t *testing.T) {
-	got, err := Marshal(torrentTestData)
+	got, err := Marshal(metainfoTestData)
 	if err != nil {
 		t.Fatalf("Marshal() error = %v", err)
 	}
