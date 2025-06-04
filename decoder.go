@@ -79,6 +79,8 @@ const (
 	ErrUnmarshalToInvalid ErrorType = "unmarshal to invalid Go type"
 	// ErrUnmarshalMapKey indicates the Go map's key type is not string.
 	ErrUnmarshalMapKey ErrorType = "unmarshal map key type error"
+	// ErrUnmarshalRequiredFieldMissing indicates a required field was not found in the input.
+	ErrUnmarshalRequiredFieldMissing ErrorType = "unmarshal required field missing"
 
 	// ErrUsage indicates incorrect usage of the bencode API.
 	ErrUsage ErrorType = "API usage error"
@@ -249,6 +251,7 @@ type cachedStructFieldInfo struct {
 	bencodeTag string
 	index      int
 	typ        reflect.Type
+	required   bool
 }
 
 var (
@@ -276,22 +279,24 @@ func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
 	var fields []cachedStructFieldInfo
 	for i := range typ.NumField() {
 		field := typ.Field(i)
-		// Skip unexported fields, as reflect.Value.CanSet() will be false for them.
 		if !field.IsExported() {
 			continue
 		}
 
-		tag := field.Tag.Get("bencode")
-		if tag == "" {
-			// Skip fields without a bencode tag.
+		tagValue := field.Tag.Get("bencode")
+		if tagValue == "" || tagValue == "-" { // Also skip if explicitly ignored
 			continue
 		}
 
+		bencodeName, left, found := strings.Cut(tagValue, ",")
+		isRequired := found && strings.TrimSpace(left) == "required"
+
 		fields = append(fields, cachedStructFieldInfo{
 			fieldName:  field.Name,
-			bencodeTag: tag,
+			bencodeTag: bencodeName,
 			index:      i,
 			typ:        field.Type,
+			required:   isRequired, // Store the parsed required status
 		})
 	}
 	structInfoCache[typ] = fields
@@ -307,17 +312,20 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 	}
 
 	typ := structVal.Type()
-	cachedFields := getCachedStructInfo(typ) // Use the caching mechanism
+	cachedFields := getCachedStructInfo(typ)
+	populatedFields := make(map[string]bool) // Keep track of populated bencode tags
 
 	for _, fieldInfo := range cachedFields {
 		fieldRuntimeVal := structVal.Field(fieldInfo.index)
 		bencodeValue, exists := dictData[fieldInfo.bencodeTag]
+
 		if !exists {
-			// Skip fields that are not present in the bencode data.
+			// If the field is required and not present, we'll catch it later.
+			// If not required and not present, we just skip it.
 			continue
 		}
+		populatedFields[fieldInfo.bencodeTag] = true
 
-		// Recursively call assignDecodedToValue for the field.
 		if err := d.assignDecodedToValue(fieldRuntimeVal, bencodeValue); err != nil {
 			return &Error{
 				Type:       err.(*Error).Type,
@@ -327,6 +335,25 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 			}
 		}
 	}
+
+	// After attempting to populate all fields, check for missing required fields.
+	for _, fieldInfo := range cachedFields {
+		if fieldInfo.required {
+			if _, wasPopulated := populatedFields[fieldInfo.bencodeTag]; !wasPopulated {
+				// Check if the key was even in dictData, as it might have been skipped if nil
+				// and the field was, for example, a non-nillable type.
+				// However, the primary check is if it was in dictData at all.
+				if _, existsInInput := dictData[fieldInfo.bencodeTag]; !existsInInput {
+					return &Error{
+						Type:      ErrUnmarshalRequiredFieldMissing,
+						Msg:       fmt.Sprintf("required field %q (tag %q) not found in bencode data", fieldInfo.fieldName, fieldInfo.bencodeTag),
+						FieldName: fieldInfo.bencodeTag,
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
