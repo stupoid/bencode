@@ -2,6 +2,8 @@ package bencode
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"testing"
 )
 
@@ -104,6 +106,136 @@ func TestEncodeStruct(t *testing.T) {
 
 			if got := b.String(); got != tt.expected {
 				t.Errorf("Encode() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+// failingWriter is an io.Writer that always returns an error.
+type failingWriter struct {
+	err error
+}
+
+func (fw *failingWriter) Write(p []byte) (n int, err error) {
+	return 0, fw.err
+}
+
+func TestEncodeErrors(t *testing.T) {
+	type RequiredStruct struct {
+		Name string `bencode:"name,required"`
+		Age  int    `bencode:"age,required"`
+	}
+
+	tests := []struct {
+		name          string
+		value         any
+		writer        io.Writer // Use a specific writer for write error tests
+		expectedError *Error    // Expect a specific bencode.Error
+		wantErrMsg    string    // For more generic error messages if needed
+		checkWrapped  bool      // Whether to check the wrapped error
+		wrappedError  error     // Expected wrapped error
+	}{
+		{
+			name:          "unsupported type (chan)",
+			value:         make(chan int),
+			expectedError: &Error{Type: ErrEncodeUnsupportedType},
+		},
+		{
+			name:          "map with non-string key",
+			value:         map[int]string{1: "one"},
+			expectedError: &Error{Type: ErrEncodeMapKeyNotString},
+		},
+		{
+			name:          "required struct field zero value",
+			value:         RequiredStruct{Name: "Test"}, // Age is zero
+			expectedError: &Error{Type: ErrEncodeRequiredFieldZero, FieldName: "age"},
+		},
+		{
+			name:          "write error on integer",
+			value:         123,
+			writer:        &failingWriter{err: errors.New("simulated write fail")},
+			expectedError: &Error{Type: ErrEncodeWriteError},
+			checkWrapped:  true,
+			wrappedError:  errors.New("simulated write fail"),
+		},
+		{
+			name:          "write error on string",
+			value:         "test string",
+			writer:        &failingWriter{err: errors.New("simulated write fail")},
+			expectedError: &Error{Type: ErrEncodeWriteError},
+			checkWrapped:  true,
+			wrappedError:  errors.New("simulated write fail"),
+		},
+		{
+			name:          "write error on list start",
+			value:         []int{1},
+			writer:        &failingWriter{err: errors.New("simulated write fail")},
+			expectedError: &Error{Type: ErrEncodeWriteError},
+			checkWrapped:  true,
+			wrappedError:  errors.New("simulated write fail"),
+		},
+		{
+			name:          "write error on dict start",
+			value:         map[string]int{"a": 1},
+			writer:        &failingWriter{err: errors.New("simulated write fail")},
+			expectedError: &Error{Type: ErrEncodeWriteError},
+			checkWrapped:  true,
+			wrappedError:  errors.New("simulated write fail"),
+		},
+		{
+			name: "write error on struct dict start",
+			value: struct {
+				Name string `bencode:"name"`
+			}{Name: "test"},
+			writer:        &failingWriter{err: errors.New("simulated write fail")},
+			expectedError: &Error{Type: ErrEncodeWriteError},
+			checkWrapped:  true,
+			wrappedError:  errors.New("simulated write fail"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var enc *Encoder
+			if tt.writer != nil {
+				enc = NewEncoder(tt.writer)
+			} else {
+				var b bytes.Buffer // Default writer if not specified
+				enc = NewEncoder(&b)
+			}
+
+			err := enc.Encode(tt.value)
+
+			if err == nil {
+				t.Fatalf("Encode() expected an error, but got nil")
+			}
+
+			bencodeErr, ok := err.(*Error)
+			if !ok {
+				if tt.wantErrMsg != "" && err.Error() == tt.wantErrMsg {
+					return // Generic error message matched
+				}
+				t.Fatalf("Encode() error = %v, want type *bencode.Error", err)
+			}
+
+			if tt.expectedError != nil {
+				if bencodeErr.Type != tt.expectedError.Type {
+					t.Errorf("Encode() error type = %q, want %q", bencodeErr.Type, tt.expectedError.Type)
+				}
+				if tt.expectedError.FieldName != "" && bencodeErr.FieldName != tt.expectedError.FieldName {
+					t.Errorf("Encode() error field name = %q, want %q", bencodeErr.FieldName, tt.expectedError.FieldName)
+				}
+			}
+
+			if tt.checkWrapped {
+				unwrapped := errors.Unwrap(bencodeErr)
+				if unwrapped == nil {
+					t.Errorf("Encode() expected a wrapped error, but got nil")
+				} else if tt.wrappedError != nil && unwrapped.Error() != tt.wrappedError.Error() {
+					// Note: Comparing error messages for wrapped errors as direct comparison might fail
+					// if they are not the exact same instance but semantically equivalent.
+					t.Errorf("Encode() wrapped error = %q, want %q", unwrapped.Error(), tt.wrappedError.Error())
+				}
 			}
 		})
 	}

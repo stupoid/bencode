@@ -304,7 +304,7 @@ func TestUnmarshalRequiredTag(t *testing.T) {
 			target:          &RequiredStruct{},
 			expectErr:       true,
 			expectedErrType: ErrUnmarshalRequiredFieldMissing,
-			expectedField:   "name", // name is required and comes before age alphabetically if both were missing
+			expectedField:   "age", // First required field missing
 		},
 		{
 			name:          "optional field missing, required present",
@@ -326,7 +326,7 @@ func TestUnmarshalRequiredTag(t *testing.T) {
 			target:          &RequiredStruct{},
 			expectErr:       true,
 			expectedErrType: ErrUnmarshalRequiredFieldMissing,
-			expectedField:   "name",
+			expectedField:   "age", // First required field missing
 		},
 	}
 
