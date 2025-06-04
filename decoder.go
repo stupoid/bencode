@@ -24,6 +24,8 @@ type Error struct {
 	WrappedErr error
 }
 
+// Error returns a string representation of the bencode error.
+// It includes the error type, field name (if applicable), message, and any wrapped error.
 func (e *Error) Error() string {
 	var sb strings.Builder
 	sb.WriteString("bencode: ")
@@ -38,6 +40,7 @@ func (e *Error) Error() string {
 	return sb.String()
 }
 
+// Unwrap returns the underlying error, if any, to support error chaining.
 func (e *Error) Unwrap() error {
 	return e.WrappedErr
 }
@@ -95,6 +98,9 @@ var (
 	ErrUnexpectedEOF           = &Error{Type: ErrSyntaxEOF, Msg: "unexpected end of input"}
 )
 
+// Unmarshal parses the bencode-encoded data and stores the result
+// in the value pointed to by v. If v is nil or not a pointer,
+// Unmarshal returns an ErrUsage.
 func Unmarshal(data []byte, v any) error {
 	dec := &Decoder{r: bufio.NewReaderSize(bytes.NewReader(data), len(data))}
 	return dec.Decode(v)
@@ -104,10 +110,18 @@ type Decoder struct {
 	r *bufio.Reader
 }
 
+// NewDecoder returns a new decoder that reads from r.
+// The decoder introduces its own buffering and may read data from r beyond
+// the bencode values requested.
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{r: bufio.NewReader(r)}
 }
 
+// Decode reads the next bencode-encoded value from its input
+// and stores it in the value pointed to by v.
+//
+// See the documentation for Unmarshal for details about the
+// conversion of bencode into a Go value.
 func (d *Decoder) Decode(v any) error {
 	val := reflect.ValueOf(v)
 	if val.Kind() != reflect.Ptr || val.IsNil() {
@@ -122,6 +136,22 @@ func (d *Decoder) Decode(v any) error {
 	}
 
 	return d.assignDecodedToValue(elem, decoded)
+}
+
+// DecodeValue decodes the next bencode value from the stream
+// and returns it as a generic Go type.
+// Possible return types for the 'any' are:
+// - []byte (for bencode strings)
+// - int64 (for bencode integers)
+// - []any (for bencode lists)
+// - map[string]any (for bencode dictionaries)
+//
+// This method allows direct access to the decoded bencode structure,
+// which can be useful for custom processing or when the target Go type
+// is not known in advance. The caller is responsible for appropriate
+// type assertions on the returned value.
+func (d *Decoder) DecodeValue() (any, error) {
+	return d.decode()
 }
 
 // assignDecodedToValue populates 'destVal' with 'srcData'.
@@ -298,6 +328,8 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 	return nil
 }
 
+// decode is the internal recursive decoding function.
+// It parses the next bencode token from the reader and returns its generic Go representation.
 func (d *Decoder) decode() (any, error) {
 	next, err := d.r.Peek(1)
 	if err != nil {

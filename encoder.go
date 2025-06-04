@@ -8,6 +8,19 @@ import (
 	"slices"
 )
 
+// Marshal returns the bencode encoding of v.
+//
+// Marshal traverses the value v recursively.
+// Supported types are:
+//   - int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64: encoded as bencode integers.
+//   - string, []byte: encoded as bencode strings.
+//   - slices: encoded as bencode lists.
+//   - maps with string keys: encoded as bencode dictionaries. Keys are sorted lexicographically.
+//   - structs: encoded as bencode dictionaries. Exported fields are used, respecting 'bencode' tags
+//     for key names and 'required' option (e.g., `bencode:"custom_name,required"`).
+//     Zero-value fields are omitted unless marked as 'required'.
+//
+// Unsupported types will result in an error.
 func Marshal(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := NewEncoder(&buf)
@@ -21,10 +34,15 @@ type Encoder struct {
 	w io.Writer
 }
 
+// NewEncoder returns a new encoder that writes to w.
 func NewEncoder(w io.Writer) *Encoder {
 	return &Encoder{w: w}
 }
 
+// Encode writes the bencode encoding of v to the stream.
+//
+// See the documentation for Marshal for details about the conversion
+// of a Go value to bencode.
 func (e *Encoder) Encode(v any) error {
 	switch v := v.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
