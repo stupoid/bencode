@@ -131,7 +131,7 @@ func (e *Encoder) Encode(v any) error {
 			}
 			cachedFields := getCachedStructInfo(val.Type()) // Assuming this doesn't error or panics on setup
 			for _, fieldInfo := range cachedFields {
-				fieldVal := val.FieldByName(fieldInfo.fieldName) // Use Field(fieldInfo.index) for performance if index is stored
+				fieldVal := val.FieldByIndex([]int{fieldInfo.index})
 				if fieldVal.IsZero() {
 					if fieldInfo.required {
 						return &Error{Type: ErrEncodeRequiredFieldZero, Msg: fmt.Sprintf("required field %q (tag %q) is zero and cannot be omitted", fieldInfo.fieldName, fieldInfo.bencodeTag), FieldName: fieldInfo.bencodeTag}

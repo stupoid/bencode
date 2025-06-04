@@ -16,7 +16,6 @@ Bencode (pronounced B-encode) is a data serialization format used primarily by t
   - Maps with string keys (encoded as Bencode dictionaries, keys are automatically sorted)
   - Structs (encoded as Bencode dictionaries)
 - **Detailed Error Handling:** Custom error types for precise error identification.
-- **Zero-Value Field Omission:** Struct fields with zero values are omitted by default during encoding, unless marked as `required`.
 
 ## Installation
 
