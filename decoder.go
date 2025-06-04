@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -242,6 +243,61 @@ func (d *Decoder) assignDecodedToValue(destVal reflect.Value, srcData any) error
 	return nil
 }
 
+// cachedStructFieldInfo holds pre-calculated information about a struct field.
+type cachedStructFieldInfo struct {
+	fieldName  string
+	bencodeTag string
+	index      int
+	typ        reflect.Type
+}
+
+var (
+	// structInfoCache caches metadata for struct types.
+	structInfoCache      = make(map[reflect.Type][]cachedStructFieldInfo)
+	structInfoCacheMutex sync.RWMutex
+)
+
+// getCachedStructInfo retrieves or computes and caches metadata for a struct type.
+func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
+	structInfoCacheMutex.RLock()
+	info, found := structInfoCache[typ]
+	structInfoCacheMutex.RUnlock()
+	if found {
+		return info
+	}
+
+	structInfoCacheMutex.Lock()
+	defer structInfoCacheMutex.Unlock()
+	// Double-check in case another goroutine populated it while waiting for the lock.
+	if info, found = structInfoCache[typ]; found {
+		return info
+	}
+
+	var fields []cachedStructFieldInfo
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		// Skip unexported fields, as reflect.Value.CanSet() will be false for them.
+		if !field.IsExported() {
+			continue
+		}
+
+		tag := field.Tag.Get("bencode")
+		if tag == "" {
+			// Skip fields without a bencode tag.
+			continue
+		}
+
+		fields = append(fields, cachedStructFieldInfo{
+			fieldName:  field.Name,
+			bencodeTag: tag,
+			index:      i,
+			typ:        field.Type,
+		})
+	}
+	structInfoCache[typ] = fields
+	return fields
+}
+
 // populateStruct populates the fields of 'structVal' using data from 'dictData'.
 // 'structVal' is the reflect.Value of the struct to populate.
 // 'dictData' is a map[string]any, typically from d.decode().
@@ -251,22 +307,11 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 	}
 
 	typ := structVal.Type()
-	for i := range typ.NumField() {
-		fieldStructDef := typ.Field(i)
-		fieldRuntimeVal := structVal.Field(i)
+	cachedFields := getCachedStructInfo(typ) // Use the caching mechanism
 
-		// Skip unexported fields or fields we cannot set.
-		if !fieldRuntimeVal.CanSet() {
-			continue
-		}
-
-		tag := fieldStructDef.Tag.Get("bencode")
-		if tag == "" {
-			// Skip fields without a bencode tag
-			continue
-		}
-
-		bencodeValue, exists := dictData[tag]
+	for _, fieldInfo := range cachedFields {
+		fieldRuntimeVal := structVal.Field(fieldInfo.index)
+		bencodeValue, exists := dictData[fieldInfo.bencodeTag]
 		if !exists {
 			// Skip fields that are not present in the bencode data.
 			continue
@@ -274,12 +319,11 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 
 		// Recursively call assignDecodedToValue for the field.
 		if err := d.assignDecodedToValue(fieldRuntimeVal, bencodeValue); err != nil {
-			// err is already *Error
 			return &Error{
 				Type:       err.(*Error).Type,
-				Msg:        fmt.Sprintf("setting field %s (tag %q)", fieldStructDef.Name, tag),
+				Msg:        fmt.Sprintf("setting field %s (tag %q)", fieldInfo.fieldName, fieldInfo.bencodeTag),
 				WrappedErr: err,
-				FieldName:  tag, // Use tag as FieldName as it's the bencode key
+				FieldName:  fieldInfo.bencodeTag,
 			}
 		}
 	}
