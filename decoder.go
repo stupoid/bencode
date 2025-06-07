@@ -44,8 +44,6 @@ const (
 	ErrUnmarshalToInvalid ErrorType = "unmarshal to invalid Go type"
 	// ErrUnmarshalMapKey indicates the Go map's key type is not string.
 	ErrUnmarshalMapKey ErrorType = "unmarshal map key type error"
-	// ErrUnmarshalRequiredFieldMissing indicates a required field was not found in the input.
-	ErrUnmarshalRequiredFieldMissing ErrorType = "unmarshal required field missing"
 
 	// ErrUsage indicates incorrect usage of the bencode API.
 	ErrUsage ErrorType = "API usage error"
@@ -247,43 +245,32 @@ func (d *Decoder) populateStruct(structVal reflect.Value, dictData map[string]an
 
 	typ := structVal.Type()
 	cachedFields := getCachedStructInfo(typ)
-	populatedFields := make(map[string]bool) // Keep track of populated bencode tags
 
 	for _, fieldInfo := range cachedFields {
 		fieldRuntimeVal := structVal.Field(fieldInfo.index)
 		bencodeValue, exists := dictData[fieldInfo.bencodeTag]
 
 		if !exists {
-			// If the field is required and not present, we'll catch it later.
-			// If not required and not present, we just skip it.
 			continue
 		}
-		populatedFields[fieldInfo.bencodeTag] = true
 
 		if err := d.assignDecodedToValue(fieldRuntimeVal, bencodeValue); err != nil {
-			return &Error{
-				Type:       err.(*Error).Type,
-				Msg:        fmt.Sprintf("setting field %s (tag %q)", fieldInfo.fieldName, fieldInfo.bencodeTag),
-				WrappedErr: err,
-				FieldName:  fieldInfo.bencodeTag,
-			}
-		}
-	}
-
-	// After attempting to populate all fields, check for missing required fields.
-	for _, fieldInfo := range cachedFields {
-		if fieldInfo.required {
-			if _, wasPopulated := populatedFields[fieldInfo.bencodeTag]; !wasPopulated {
-				// Check if the key was even in dictData, as it might have been skipped if nil
-				// and the field was, for example, a non-nillable type.
-				// However, the primary check is if it was in dictData at all.
-				if _, existsInInput := dictData[fieldInfo.bencodeTag]; !existsInInput {
-					return &Error{
-						Type:      ErrUnmarshalRequiredFieldMissing,
-						Msg:       fmt.Sprintf("required field %q (tag %q) not found in bencode data", fieldInfo.fieldName, fieldInfo.bencodeTag),
-						FieldName: fieldInfo.bencodeTag,
-					}
+			// Ensure err is *Error before accessing Type
+			bencodeErr, ok := err.(*Error)
+			if !ok {
+				// This case should ideally not happen if assignDecodedToValue always returns *Error
+				return &Error{
+					Type:       ErrUnmarshalType, // Generic fallback
+					Msg:        fmt.Sprintf("setting field %s (tag %q): unknown error type", fieldInfo.fieldName, fieldInfo.bencodeTag),
+					WrappedErr: err,
+					FieldName:  fieldInfo.bencodeTag,
 				}
+			}
+			return &Error{
+				Type:       bencodeErr.Type,
+				Msg:        fmt.Sprintf("setting field %s (tag %q)", fieldInfo.fieldName, fieldInfo.bencodeTag),
+				WrappedErr: err, // err is already bencodeErr here
+				FieldName:  fieldInfo.bencodeTag,
 			}
 		}
 	}

@@ -156,11 +156,6 @@ func (fw *failingWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestEncodeErrors(t *testing.T) {
-	type RequiredStruct struct {
-		Name string `bencode:"name,required"`
-		Age  int    `bencode:"age,required"`
-	}
-
 	tests := []struct {
 		name          string
 		value         any
@@ -179,11 +174,6 @@ func TestEncodeErrors(t *testing.T) {
 			name:          "map with non-string key",
 			value:         map[int]string{1: "one"},
 			expectedError: &Error{Type: ErrEncodeMapKeyNotString},
-		},
-		{
-			name:          "required struct field zero value",
-			value:         RequiredStruct{Name: "Test"}, // Age is zero
-			expectedError: &Error{Type: ErrEncodeRequiredFieldZero, FieldName: "age"},
 		},
 		{
 			name:          "write error on integer",
@@ -287,7 +277,7 @@ func TestMarshal(t *testing.T) {
 	}
 }
 
-func TestEncodeNonRequiredZeroValue(t *testing.T) {
+func TestEncodeZeroValue(t *testing.T) {
 	type NonRequiredStruct struct {
 		Value int `bencode:"value"`
 	}

@@ -8,33 +8,8 @@ import (
 )
 
 const (
-	bencodeTagName      = "bencode"
-	bencodeTagRequired  = "required"
-	bencodeTagSeparator = ","
-	bencodeTagIgnore    = "-"
-	bencodeTagOmitEmpty = "omitempty"
+	bencodeTagName = "bencode"
 )
-
-func parseTagValue(tagValue string) (name string, required bool, omitEmpty bool) {
-	if tagValue == "" || tagValue == bencodeTagIgnore {
-		return "", false, false
-	}
-	nameVal, left, hasParts := strings.Cut(tagValue, bencodeTagSeparator)
-	name = strings.TrimSpace(nameVal)
-	if hasParts {
-		parts := strings.Split(left, bencodeTagSeparator)
-		for _, part := range parts {
-			switch strings.TrimSpace(part) {
-			case bencodeTagRequired:
-				required = true
-			case bencodeTagOmitEmpty:
-				omitEmpty = true
-			}
-		}
-	}
-
-	return name, required, omitEmpty
-}
 
 var (
 	// structInfoCache caches metadata for struct types.
@@ -48,8 +23,6 @@ type cachedStructFieldInfo struct {
 	bencodeTag string
 	index      int
 	typ        reflect.Type
-	required   bool
-	omitEmpty  bool
 }
 
 // getCachedStructInfo retrieves or computes and caches metadata for a struct type.
@@ -75,8 +48,7 @@ func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
 			continue
 		}
 
-		tagValue := field.Tag.Get("bencode")
-		bencodeName, required, omitEmpty := parseTagValue(tagValue)
+		bencodeName := field.Tag.Get(bencodeTagName)
 
 		if bencodeName == "" {
 			// If no tag is specified, use the field name as the bencode tag.
@@ -88,8 +60,6 @@ func getCachedStructInfo(typ reflect.Type) []cachedStructFieldInfo {
 			bencodeTag: bencodeName,
 			index:      i,
 			typ:        field.Type,
-			required:   required,
-			omitEmpty:  omitEmpty,
 		})
 	}
 

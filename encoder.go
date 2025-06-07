@@ -13,8 +13,6 @@ var (
 	ErrEncodeUnsupportedType ErrorType = "encode: unsupported type"
 	// ErrEncodeMapKeyNotString indicates that a Go map's key type is not string, which is required for bencode dictionaries.
 	ErrEncodeMapKeyNotString ErrorType = "encode: map key not string"
-	// ErrEncodeRequiredFieldZero indicates that a struct field tagged as 'required' has its zero value.
-	ErrEncodeRequiredFieldZero ErrorType = "encode: required field is zero"
 	// ErrEncodeWriteError indicates an error occurred while writing to the output stream.
 	ErrEncodeWriteError ErrorType = "encode: write error"
 )
@@ -28,8 +26,7 @@ var (
 //   - slices: encoded as bencode lists.
 //   - maps with string keys: encoded as bencode dictionaries. Keys are sorted lexicographically.
 //   - structs: encoded as bencode dictionaries. Exported fields are used, respecting 'bencode' tags
-//     for key names and 'required' option (e.g., `bencode:"custom_name,required"`).
-//     Zero-value fields are omitted unless marked as 'required'.
+//     for key names (e.g., `bencode:"custom_name"`).
 //
 // Unsupported types will result in an error.
 func Marshal(v any) ([]byte, error) {
@@ -132,14 +129,6 @@ func (e *Encoder) Encode(v any) error {
 			cachedFields := getCachedStructInfo(val.Type()) // Assuming this doesn't error or panics on setup
 			for _, fieldInfo := range cachedFields {
 				fieldVal := val.FieldByIndex([]int{fieldInfo.index})
-				if fieldVal.IsZero() {
-					if fieldInfo.required {
-						return &Error{Type: ErrEncodeRequiredFieldZero, Msg: fmt.Sprintf("required field %q (tag %q) is zero and cannot be omitted", fieldInfo.fieldName, fieldInfo.bencodeTag), FieldName: fieldInfo.bencodeTag}
-					}
-					if fieldInfo.omitEmpty {
-						continue // Skip zero-value fields if omitEmpty is set
-					}
-				}
 				// Encode key (bencodeTag)
 				if _, err := fmt.Fprintf(e.w, "%d:%s", len([]byte(fieldInfo.bencodeTag)), fieldInfo.bencodeTag); err != nil {
 					return &Error{Type: ErrEncodeWriteError, Msg: fmt.Sprintf("failed to write struct field key %q", fieldInfo.bencodeTag), WrappedErr: err, FieldName: fieldInfo.bencodeTag}
